@@ -1,0 +1,15 @@
+# Agent Guard configuration
+# Copy this file to .env and fill in your values
+
+# Mode: "enforce" blocks dangerous requests, "dry-run" only logs
+AGENT_GUARD_MODE=dry-run
+
+# Port the proxy listens on
+AGENT_GUARD_PORT=8443
+
+# Path to policy file
+AGENT_GUARD_POLICY_PATH=policies/default.yaml
+
+# Provider API keys (forwarded to the real provider)
+# ANTHROPIC_API_KEY=sk-ant-xxx
+# OPENAI_API_KEY=sk-xxx

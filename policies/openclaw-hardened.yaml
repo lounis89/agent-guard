@@ -1,0 +1,140 @@
+# OpenClaw Hardened Policy
+# Defensive rules derived from real-world OpenClaw CVEs and attack patterns.
+#
+# References:
+#   - CVE-2026-25253  WebSocket hijack → RCE
+#   - CVE-2026-25157  OS command injection via SSH path
+#   - CVE-2026-24763  Docker PATH command injection
+#   - Clawhatch audit: hardcoded credentials in 40 % of public configs
+#   - MITRE ATLAS: prompt injection & tool-call exfiltration
+#   - Gmail-hook 0-click RCE (veganmosfet disclosure)
+
+version: "1.0"
+default_action: allow
+
+rules:
+  # ── CVE-2026-25253  Cross-origin WS hijack → arbitrary exec ──────────────
+  - id: cve-2026-25253-ws-hijack
+    when:
+      tool: bash
+      args_regex: "ws://|wss://|gatewayUrl|websocket"
+      direction: output
+    action: block
+    reason: >-
+      Block tool calls referencing WebSocket gateway URLs.
+      CVE-2026-25253 exploits gatewayUrl to hijack the WS and run arbitrary code.
+
+  # ── CVE-2026-25157  OS command injection via SSH path ────────────────────
+  - id: cve-2026-25157-ssh-injection
+    when:
+      tool: bash
+      args_regex: "ssh\\s.*[;&|`$]|;\\s*ssh\\s|ssh\\s+-o\\s+ProxyCommand"
+      direction: output
+    action: block
+    reason: >-
+      Block SSH commands with injection metacharacters.
+      CVE-2026-25157 chains OS commands through the SSH path parameter.
+
+  # ── CVE-2026-24763  Docker PATH command injection ────────────────────────
+  - id: cve-2026-24763-docker-path
+    when:
+      tool: bash
+      args_regex: "docker\\s.*PATH=|docker\\s.*--env\\s+PATH"
+      direction: output
+    action: block
+    reason: >-
+      Block Docker commands that manipulate PATH.
+      CVE-2026-24763 injects malicious binaries via PATH override.
+
+  # ── Prompt injection — classic overrides ─────────────────────────────────
+  - id: prompt-injection-ignore-instructions
+    when:
+      message_regex: "(?i)(ignore|disregard|forget)\\s+(all\\s+)?(previous|prior|above|earlier)\\s+(instructions?|rules?|prompts?)"
+      direction: input
+    action: block
+    reason: >-
+      Block messages containing classic prompt injection preambles
+      attempting to override system instructions.
+
+  - id: prompt-injection-new-persona
+    when:
+      message_regex: "(?i)you\\s+are\\s+now\\s+(DAN|jailbroken|unrestricted|evil)|act\\s+as\\s+if\\s+you\\s+have\\s+no\\s+(restrictions?|rules?|limitations?)"
+      direction: input
+    action: block
+    reason: >-
+      Block jailbreak prompts that try to assign a new unrestricted persona.
+
+  # ── Credential exfiltration via tool calls ───────────────────────────────
+  - id: exfil-api-keys-in-args
+    when:
+      args_regex: "(sk-ant-[a-zA-Z0-9-]{20,}|sk-[a-zA-Z0-9]{20,}|ghp_[a-zA-Z0-9]{36}|xoxb-[0-9]+-[a-zA-Z0-9]+)"
+      direction: output
+    action: redact
+    reason: >-
+      Redact tool calls that contain recognisable API keys
+      (Anthropic, OpenAI, GitHub PAT, Slack bot token).
+      Clawhatch audit found 40 % of public configs leak credentials.
+
+  - id: exfil-secrets-in-messages
+    when:
+      message_regex: "(sk-ant-[a-zA-Z0-9-]{20,}|sk-[a-zA-Z0-9]{20,}|ghp_[a-zA-Z0-9]{36}|AKIA[0-9A-Z]{16})"
+      direction: both
+      contains_secret: true
+    action: redact
+    reason: >-
+      Redact messages leaking API keys or AWS access key IDs.
+
+  # ── Cross-session privilege escalation ───────────────────────────────────
+  - id: group-to-main-escalation
+    when:
+      tool: sessions_send
+      target_contains: "main"
+      source_tier: [group, unknown]
+      direction: output
+    action: block
+    reason: >-
+      Block group/unknown sessions from sending messages to the main
+      (operator) session. Prevents cross-session privilege escalation.
+
+  - id: dm-to-main-exec
+    when:
+      tool: bash
+      source_tier: [dm, group, unknown]
+      args_regex: "(rm\\s+-rf|mkfs|dd\\s+if=|:\\(\\)\\{.*:\\|:|shutdown|reboot|curl.*\\|\\s*(bash|sh)|wget.*\\|\\s*(bash|sh))"
+      direction: output
+    action: block
+    reason: >-
+      Block destructive or download-and-execute commands from
+      non-operator sessions.
+
+  # ── Supply-chain: malicious skill payloads ───────────────────────────────
+  - id: supply-chain-hidden-exec
+    when:
+      tool: bash
+      args_regex: "(eval|exec)\\s*\\(.*base64|python.*-c.*import\\s+(os|subprocess)|node\\s+-e.*child_process"
+      direction: output
+    action: block
+    reason: >-
+      Block obfuscated code execution patterns often found in
+      poisoned skills distributed on ClawdHub.
+
+  # ── Gmail-hook 0-click RCE ──────────────────────────────────────────────
+  - id: gmail-hook-rce
+    when:
+      message_regex: "(?i)(from|subject|reply-to):.*\\n.*\\b(exec|bash|curl|wget|python|node)\\b"
+      direction: input
+    action: block
+    reason: >-
+      Block email-like input that embeds shell commands, matching the
+      0-click RCE attack vector via OpenClaw's Gmail hook.
+
+  # ── Network exfiltration via curl/wget ───────────────────────────────────
+  - id: exfil-network-upload
+    when:
+      tool: bash
+      args_regex: "(curl|wget|nc|ncat)\\s+.*(-X\\s+POST|-d\\s|--data|--upload-file|>\\s*/dev/tcp)"
+      direction: output
+    action: block
+    reason: >-
+      Block tool calls that POST data to external hosts or use
+      netcat for data exfiltration.

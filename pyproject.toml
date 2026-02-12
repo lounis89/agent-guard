@@ -1,0 +1,98 @@
+[project]
+name = "agent-guard"
+version = "0.1.0"
+description = "LLM Security Proxy — inspect and control LLM API calls in real-time"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.13"
+authors = [
+    { name = "Lounis" },
+]
+keywords = ["llm", "security", "proxy", "agent", "firewall", "prompt-injection"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Security",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+dependencies = [
+    "fastapi==0.128.8",
+    "httpx==0.28.1",
+    "uvicorn[standard]==0.40.0",
+    "pydantic==2.12.5",
+    "pyyaml==6.0.2",
+    "structlog==25.4.0",
+    "prometheus-client==0.21.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==9.0.2",
+    "pytest-asyncio==1.3.0",
+    "pytest-httpx==0.36.0",
+]
+
+[project.scripts]
+agent-guard = "agent_guard.main:main"
+
+[project.urls]
+Homepage = "https://github.com/agent-guard/agent-guard"
+Repository = "https://github.com/agent-guard/agent-guard"
+Issues = "https://github.com/agent-guard/agent-guard/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agent_guard"]
+
+# -- Pixi workspace ----------------------------------------------------------
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+preview = ["pixi-build"]
+
+[tool.pixi.dependencies]
+python = ">=3.13"
+ruff = ">=0.15.0,<0.16"
+
+[tool.pixi.pypi-dependencies]
+agent-guard = { path = ".", editable = true }
+
+[tool.pixi.feature.dev.dependencies]
+ruff = ">=0.11"
+
+[tool.pixi.environments]
+default = { features = ["dev"], solve-group = "default" }
+dev = { features = ["dev"], solve-group = "default" }
+
+# -- Pixi tasks ---------------------------------------------------------------
+
+[tool.pixi.tasks]
+start = "uvicorn agent_guard.server:app --host 0.0.0.0 --port 8443 --reload"
+lint = "ruff check src/ tests/"
+format = "ruff format src/ tests/"
+test = "pytest tests/ -v"
+bench = "python -m benchmarks.bench_openclaw --verbose"
+bench-ci = "python -m benchmarks.bench_openclaw --fail-under 100"
+
+# -- Ruff ---------------------------------------------------------------------
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+
+# -- Pytest -------------------------------------------------------------------
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

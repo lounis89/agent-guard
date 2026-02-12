@@ -1,0 +1,8 @@
+# Agent Guard — Default Policy
+# Allow-all baseline with no rules.  Copy this file and add rules to
+# match your deployment (or use policies/openclaw-hardened.yaml for a
+# battle-tested starting point).
+
+version: "1.0"
+default_action: allow
+rules: []
